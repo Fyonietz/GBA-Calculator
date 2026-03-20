@@ -61,6 +61,7 @@ pub const DMA3CNT  = @as(*volatile u32, @ptrFromInt(0x040000DC)); // count + con
 pub const DMA_ENABLE:  u32 = 1 << 31;
 pub const DMA_32BIT:   u32 = 1 << 26; // transfer 32 bits at a time
 pub const DMA_FILL:    u32 = 1 << 24; // fixed source (fill mode)
+pub const DMA_SOURCE_FIXED = 0x01000000; 
 // ============================================================
 // SECTION 2: Background control registers
 // ============================================================
@@ -306,6 +307,10 @@ pub fn vBlankStart() void {
 pub fn vBlankEnd() void {
     while (VCOUNT.* >= 160) {} // wait until vblank ends
 }
+pub fn waitVBlank() void{
+    while (VCOUNT.* != 160){}
+}
+
 pub fn vsync() void {
     vBlankStart();
     vBlankEnd();

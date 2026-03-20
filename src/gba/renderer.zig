@@ -1,20 +1,32 @@
 const video = @import("video.zig");
 //dmaClear
-pub inline fn dmaClear(color:u32) void {
-    // Pack color into a u32 (fills two pixels per transfer)
-    const fill: u32 = @as(u32, color) | (@as(u32, color) << 16);
-
-    // We need fill value in memory for DMA to read from
-    // Use a static variable so it has a stable address
+pub inline fn dmaClear(color: u16) void {
+    // Pack two 16-bit pixels into one 32-bit word
+    const fill_val: u32 = @as(u32, color) | (@as(u32, color) << 16);
+    
+    // We use a static to ensure the address is in IWRAM/EWRAM, not a register
     const S = struct { var val: u32 = 0; };
-    S.val = fill;
+    S.val = fill_val;
 
     video.DMA3SAD.* = @intFromPtr(&S.val);
     video.DMA3DAD.* = 0x06000000;
-    // 240*160 pixels = 38400 pixels / 2 pixels per 32-bit transfer = 19200 transfers
-    video.DMA3CNT.* = video.DMA_ENABLE | video.DMA_32BIT | video.DMA_FILL | 19200;
+    
+    // DMA_SOURCE_FIXED (0x01000000) is CRITICAL here. 
+    // It tells DMA: "Keep reading from the same address (S.val)"
+    // Otherwise, it reads S.val, then S.val + 4, then S.val + 8... (Garbage!)
+    const DMA_SOURCE_FIXED = 0x01000000; 
+    
+    video.DMA3CNT.* = video.DMA_ENABLE | video.DMA_32BIT | DMA_SOURCE_FIXED | 19200;
 
+    // Optional: If the bug persists, add a small assembly 'nop' or 
+    // check the DMA_ENABLE bit to wait until it's finished.
+    while ((video.DMA3CNT.* & video.DMA_ENABLE) != 0) {}
 }
+pub fn waitDMA() void {
+    while(video.DMA3CNT.* & (1 << 15) != 0) {}
+}
+
+
 //Packing RGB Colour to GBA Colour
 pub inline fn rgb15(r:u5,g:u5,b:u5)u16{
     return @as(u16,r) | (@as(u16,g) << 5) | (@as(u16,b) << 10);

@@ -1,63 +1,57 @@
-const video = @import("gba/video.zig");
-const renderer = @import("gba/renderer.zig");
-const keypad = @import("gba/keypad.zig");
+const REG_DISPCNT = @as(*volatile u16, @ptrFromInt(0x04000000));
+const REG_BG0CNT  = @as(*volatile u16, @ptrFromInt(0x04000008));
+const REG_VCOUNT  = @as(*volatile u16, @ptrFromInt(0x04000006));
+const PALETTE_RAM = @as([*]volatile u16, @ptrFromInt(0x05000000));
 
-export fn _start() noreturn{
-    //Display Mode 3 with Background 2
-    video.DISPCNT.* = video.DCNT_MODE3 | video.DCNT_BG2;
-    const screen_w:u32 = 240;
-    const screen_h:u32 = 160;
-    var frame_counter:u32 = 0;
-    //Color
-    const color_white = renderer.rgb15(31,31,31);
-    const color_blue =  renderer.rgb15(0,0,31);
-    const color_red =  renderer.rgb15(31,0,0);
-    var bg_color:u16 =color_white ;
-    //Rectangle
-    const rect_size:u32 = 8;
-    var rect_x:u32 = 120;
-    var rect_y:u32 = 80;
+fn getCharBlock(block: u32) [*]volatile u16 { return @ptrFromInt(0x06000000 + (block * 0x4000)); }
+fn getScreenBlock(block: u32) [*]volatile u16 { return @ptrFromInt(0x06000000 + (block * 0x800)); }
 
-    while(true){
-        video.vBlankStart();
-        frame_counter +=1;
-        //Bg Colour Changing
-        
-        // L Button UnPressed Changing to White (31,31,31)
-        if(keypad.up(keypad.L)){
-            bg_color =  color_white;
-        }
+export fn _start() void {
+    // 1. Crayon Box
+    PALETTE_RAM[0] = 0x0000; // Black (Empty)
+    PALETTE_RAM[1] = 0x03E0; // Green
+    PALETTE_RAM[2] = 0x7FFF; // White
 
-        //L Button Press Changing to Blue (0,0,0)
-        if(keypad.down(keypad.L)){
-            bg_color = color_blue;
-        }
+    const char0 = getCharBlock(0);
 
-        
-        renderer.dmaClear(bg_color);
+    // 2. Tile 0: The "Empty" Stamp (All Zeros/Black)
+    var t: u32 = 0;
+    while (t < 16) : (t += 1) { char0[t] = 0x0000; }
 
-        renderer.m3FillRect(rect_x,rect_y,rect_size,rect_size,color_red);
+    // 3. Tile 1: The "Green Rectangle" Stamp
+    const rect_tile = [16]u16{
+        0x2222, 0x2222, // 1 White 
+        0x1111, 0x1111, // 2 Green
+        0x2222, 0x2222, // 3 White
+        0x1111, 0x1111, // 4 Green
+        0x2222, 0x2222, // 5 White
+        0x1111, 0x1111, // 6 Green
+        0x2222, 0x2222, // 7 White
+        0x1111, 0x1111, // 8 Green
+    };
+    for (rect_tile, 0..) |data, i| { char0[16 + i] = data; }
 
-        if(frame_counter % 3 == 0){
-            if(keypad.down(keypad.UP)){
-                rect_y -|=1;
-            }
-            if(keypad.down(keypad.DOWN)){
-                rect_y =@min(rect_y+1,screen_h-rect_size);
-            }
-            if(keypad.down(keypad.LEFT)){
-                rect_x -|=1;
-            }
-            if(keypad.down(keypad.RIGHT)){
-                rect_x =@min(rect_x+1,screen_w-rect_size);
-            }
+    // 4. Setup the Map
+    const map31 = getScreenBlock(31);
+    
+    // FIRST: Fill everything with Tile 0 (The Black/Empty one)
+    var i: u32 = 0;
+    while (i < 32 * 32) : (i += 1) { map31[i] = 0; }
 
-        }
+    // SECOND: Place only ONE Tile 1 in the middle
+    // Screen is 30 tiles wide, 20 high. Middle is ~ (15, 10)
+    const tx = 15;
+    const ty = 10;
+    map31[ty * 32 + tx] = 1; // Use the ID of our green tile
 
-        
+    // 5. Turn it on
+    REG_BG0CNT.* = (31 << 8); 
+    REG_DISPCNT.* = 0x0100;
 
-        video.vBlankEnd();
-    }
-
+    while (true) { vsync(); }
 }
 
+pub fn vsync() void {
+    while (REG_VCOUNT.* >= 160) {}
+    while (REG_VCOUNT.* < 160) {}
+}
