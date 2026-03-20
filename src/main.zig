@@ -1,57 +1,60 @@
-const REG_DISPCNT = @as(*volatile u16, @ptrFromInt(0x04000000));
-const REG_BG0CNT  = @as(*volatile u16, @ptrFromInt(0x04000008));
-const REG_VCOUNT  = @as(*volatile u16, @ptrFromInt(0x04000006));
-const PALETTE_RAM = @as([*]volatile u16, @ptrFromInt(0x05000000));
-
-fn getCharBlock(block: u32) [*]volatile u16 { return @ptrFromInt(0x06000000 + (block * 0x4000)); }
-fn getScreenBlock(block: u32) [*]volatile u16 { return @ptrFromInt(0x06000000 + (block * 0x800)); }
-
-export fn _start() void {
-    // 1. Crayon Box
-    PALETTE_RAM[0] = 0x0000; // Black (Empty)
-    PALETTE_RAM[1] = 0x03E0; // Green
-    PALETTE_RAM[2] = 0x7FFF; // White
-
-    const char0 = getCharBlock(0);
-
-    // 2. Tile 0: The "Empty" Stamp (All Zeros/Black)
-    var t: u32 = 0;
-    while (t < 16) : (t += 1) { char0[t] = 0x0000; }
-
-    // 3. Tile 1: The "Green Rectangle" Stamp
-    const rect_tile = [16]u16{
-        0x2222, 0x2222, // 1 White 
-        0x1111, 0x1111, // 2 Green
-        0x2222, 0x2222, // 3 White
-        0x1111, 0x1111, // 4 Green
-        0x2222, 0x2222, // 5 White
-        0x1111, 0x1111, // 6 Green
-        0x2222, 0x2222, // 7 White
-        0x1111, 0x1111, // 8 Green
-    };
-    for (rect_tile, 0..) |data, i| { char0[16 + i] = data; }
-
-    // 4. Setup the Map
-    const map31 = getScreenBlock(31);
+const video = @import("gba/video.zig");
+const renderer = @import("gba/renderer.zig");
+const keypad = @import("gba/keypad.zig");
+export fn _start() noreturn {
     
-    // FIRST: Fill everything with Tile 0 (The Black/Empty one)
-    var i: u32 = 0;
-    while (i < 32 * 32) : (i += 1) { map31[i] = 0; }
+    video.DISPCNT.* = video.DCNT_MODE0 | video.DCNT_BG0;
 
-    // SECOND: Place only ONE Tile 1 in the middle
-    // Screen is 30 tiles wide, 20 high. Middle is ~ (15, 10)
-    const tx = 15;
-    const ty = 10;
-    map31[ty * 32 + tx] = 1; // Use the ID of our green tile
+    video.PAL_BG[0] = renderer.rgb15(0,0,0);
+    video.PAL_BG[1] = renderer.rgb15(0,0,31);
+    video.PAL_BG[2] = renderer.rgb15(31,0,0);
+    video.PAL_BG[3] = renderer.rgb15(31,31,31);
+    
+    // 256 Color Mode,Tile(64 Bytes) size same as 16 u32 words section
+    const tile_data = @as([*]volatile u32,@ptrFromInt(0x06000000));
 
-    // 5. Turn it on
-    REG_BG0CNT.* = (31 << 8); 
-    REG_DISPCNT.* = 0x0100;
+    var i:u32 =0;
+    //pack 4 pixel per u32 : 0x
+    //Tile 0 - blue
+    while(i < 16):(i+=1){
+        tile_data[i] = 0x01010101;
+    }
+    
+    i = 0;
+    //Tile 1 - red;
+    while(i < 16) : (i+=1){
+        tile_data[16 + i] = 0x02020202; 
+    }
 
-    while (true) { vsync(); }
-}
 
-pub fn vsync() void {
-    while (REG_VCOUNT.* >= 160) {}
-    while (REG_VCOUNT.* < 160) {}
+    //Setup tile map in screen block 20;
+    
+    const map = video.screenBase(28);
+
+    i = 0;
+    while (i < 32 * 32):(i+=1){
+        map[i] = 0 ;
+    }
+    var pos_x:u32 = 10;
+    // var pos_y:u32 = 10;
+    // Y * Map Size + X
+    map[10 * 32 + pos_x] = 1; // tile index
+
+
+    video.BG0CNT.* = video.bgControl(0,0,28,true);
+
+    while(true){
+        video.vBlankStart();
+        if(keypad.down(keypad.RIGHT)){
+            pos_x +=1 ;
+            map[10 * 32 + pos_x] = 1; // tile index
+            map[10 * 32 + (pos_x-1)] = 0; // tile index
+        }
+        if(keypad.down(keypad.LEFT)){
+            pos_x -=1;
+            map[10 * 32 + pos_x] = 1; // tile index
+            map[10 * 32 + (pos_x+1)] = 0; // tile index
+        }
+        video.vBlankEnd();
+    }
 }
