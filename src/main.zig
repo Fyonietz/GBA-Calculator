@@ -1,6 +1,13 @@
 const video = @import("gba/video.zig");
 const renderer = @import("gba/renderer.zig");
 const keypad = @import("gba/keypad.zig");
+const UI = @import("tools.zig").UI;
+
+//CONSTANTS
+const TILE_WIDTH = undefined;
+const TILE_HEIGHT= undefined;
+
+
 export fn _start() noreturn {
     
     video.DISPCNT.* = video.DCNT_MODE0 | video.DCNT_BG0;
@@ -13,48 +20,43 @@ export fn _start() noreturn {
     // 256 Color Mode,Tile(64 Bytes) size same as 16 u32 words section
     const tile_data = @as([*]volatile u32,@ptrFromInt(0x06000000));
 
+    const map = video.screenBase(28);
     var i:u32 =0;
     //pack 4 pixel per u32 : 0x
     //Tile 0 - blue
     while(i < 16):(i+=1){
         tile_data[i] = 0x01010101;
     }
-    
+    //BorderRect Setup
+    var container = UI.BorderRect{
+        .width = 10,
+        .height = 10,
+        .x = 0,
+        .y = 0,
+        .border_size = 1,
+        .color = 0x02020202,
+        .id = 1,
+        .map = map,
+        .tile_data = tile_data
+    };
     i = 0;
     //Tile 1 - red;
     while(i < 16) : (i+=1){
-        tile_data[16 + i] = 0x02020202; 
+        container.tile_data[16 + i]=container.color;
     }
-
-
     //Setup tile map in screen block 20;
-    
-    const map = video.screenBase(28);
-
     i = 0;
     while (i < 32 * 32):(i+=1){
         map[i] = 0 ;
     }
-    var pos_x:u32 = 10;
-    // var pos_y:u32 = 10;
-    // Y * Map Size + X
-    map[10 * 32 + pos_x] = 1; // tile index
-
-
     video.BG0CNT.* = video.bgControl(0,0,28,true);
 
+    container.draw();
     while(true){
         video.vBlankStart();
-        if(keypad.down(keypad.RIGHT)){
-            pos_x +=1 ;
-            map[10 * 32 + pos_x] = 1; // tile index
-            map[10 * 32 + (pos_x-1)] = 0; // tile index
-        }
-        if(keypad.down(keypad.LEFT)){
-            pos_x -=1;
-            map[10 * 32 + pos_x] = 1; // tile index
-            map[10 * 32 + (pos_x+1)] = 0; // tile index
-        }
+    container.draw();
+
         video.vBlankEnd();
     }
+    
 }

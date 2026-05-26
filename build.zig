@@ -25,7 +25,7 @@ pub fn build (b: *std.Build)void{
     });
 
     //Reset Handler Assembly
-    elf.addAssemblyFile(b.path("src/gba/crt0.s"));
+    elf.root_module.addAssemblyFile(b.path("src/gba/crt0.s"));
 
     //Linker 
     elf.setLinkerScript(b.path("linker.ld"));
