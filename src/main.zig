@@ -4,9 +4,14 @@ const keypad = @import("gba/keypad.zig");
 const UI = @import("tools.zig").UI;
 
 //CONSTANTS
+const SCREEN_WIDTH = 240;
+const SCREEN_HEIGHT = 160;
 const TILE_WIDTH = undefined;
 const TILE_HEIGHT= undefined;
 
+fn CenterHorizontal(width:u32,x:*u32) void{
+    x.* = (SCREEN_WIDTH / 8 - width) / 2;
+}
 
 export fn _start() noreturn {
     
@@ -29,8 +34,8 @@ export fn _start() noreturn {
     }
     //BorderRect Setup
     var container = UI.BorderRect{
-        .width = 10,
-        .height = 10,
+        .width = 3,
+        .height = 3,
         .x = 0,
         .y = 0,
         .border_size = 1,
@@ -39,6 +44,7 @@ export fn _start() noreturn {
         .map = map,
         .tile_data = tile_data
     };
+    CenterHorizontal(container.width,&container.x);
     i = 0;
     //Tile 1 - red;
     while(i < 16) : (i+=1){
@@ -50,11 +56,12 @@ export fn _start() noreturn {
         map[i] = 0 ;
     }
     video.BG0CNT.* = video.bgControl(0,0,28,true);
-
-    container.draw();
+    map[0] = 2;
+    UI.Font.drawChar(tile_data, 2, 9 , 3);
     while(true){
         video.vBlankStart();
-    container.draw();
+
+        container.draw();
 
         video.vBlankEnd();
     }
